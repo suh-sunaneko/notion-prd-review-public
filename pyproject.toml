@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "notion-formatter"
+version = "0.1.0"
+description = "Automated Notion requirement formatting and AI review workflow."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = [
+    "notion-client>=2.0.0",
+    "openai>=1.37.0",
+    "markdown-it-py>=3.0.0",
+    "python-dotenv>=1.0.0",
+    "tenacity>=8.2.0",
+]
+
+[project.scripts]
+notion-formatter = "notion_formatter.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

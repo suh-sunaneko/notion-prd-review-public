@@ -1,0 +1,75 @@
+name: Notion Auto Format
+
+on:
+  workflow_dispatch:
+    inputs:
+      page_id:
+        description: "Target Notion page ID (page to rewrite)"
+        required: true
+  repository_dispatch:
+    types:
+      - notion-auto-format
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    env:
+      NOTION_TARGET_PAGE_ID: ${{ inputs.page_id || github.event.client_payload.page_id }}
+      NOTION_TEMPLATE_PAGE_ID: ${{ secrets.NOTION_TEMPLATE_PAGE_ID }}
+      NOTION_REVIEW_PAGE_ID: ${{ secrets.NOTION_REVIEW_PAGE_ID }}
+      NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          pip install .
+
+      - name: Run Notion formatter
+        id: formatter
+        run: |
+          set -euo pipefail
+          if [ -z "${NOTION_TEMPLATE_PAGE_ID}" ]; then
+            echo "NOTION_TEMPLATE_PAGE_ID must be provided via Secrets or Repository variables." >&2
+            exit 1
+          fi
+          if [ -z "${NOTION_TARGET_PAGE_ID}" ]; then
+            echo "NOTION_TARGET_PAGE_ID must be provided." >&2
+            exit 1
+          fi
+          RESULT_JSON="$(notion-formatter --json)"
+          echo "${RESULT_JSON}"
+          echo "result=${RESULT_JSON}" >> "${GITHUB_OUTPUT}"
+
+      - name: Publish summary
+        if: success()
+        env:
+          RESULT_JSON: ${{ steps.formatter.outputs.result }}
+        run: |
+          python <<'PY'
+          import json
+          import os
+
+          result = json.loads(os.environ["RESULT_JSON"])
+          summary_path = os.environ["GITHUB_STEP_SUMMARY"]
+
+          status = "✅ 完了" if result.get("is_complete") else "⚠️ 追加情報が必要"
+          message = result.get("completion_message", "")
+
+          with open(summary_path, "a", encoding="utf-8") as summary:
+              summary.write(f"## Notion Auto Format\n")
+              summary.write(f"- Page ID: `{result.get('page_id')}`\n")
+              summary.write(f"- Template ID: `{result.get('template_page_id')}`\n")
+              summary.write(f"- ステータス: {status}\n")
+              summary.write(f"- メッセージ: {message}\n")
+              summary.write(f"- 更新ブロック数: {result.get('updated_block_count')}\n")
+          PY
